@@ -1,0 +1,20 @@
+#!/bin/bash
+#
+# Script which imitates the real bin/cassandra for the sake of easy
+# integration with Cassandra's own system tests
+
+pidfile="twistd.pid"
+logfile="nova.log"
+
+cd "$(dirname "$0")/.."
+
+if [ "$1" = "-p" ]; then
+    shift
+    pidfile="$1"
+    shift
+fi
+
+export CASSANOVA_CLUSTER_NAME="Test Cluster"
+export CASSANOVA_CLUSTER_PORT=9170
+
+exec /usr/bin/twistd -y "test.tap" --logfile="$logfile" --pidfile="$pidfile" "$@"

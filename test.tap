@@ -1,0 +1,13 @@
+import sys
+import os
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from cassanova import CassanovaService
+from twisted.application import service
+
+application = service.Application('cassanova')
+
+c = CassanovaService(int(os.environ.get('CASSANOVA_CLUSTER_PORT', 12379)))
+c.add_node('127.0.0.1')
+c.setServiceParent(application)
