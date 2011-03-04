@@ -420,6 +420,8 @@ class CassanovaInterface:
         compar = self.service.comparator_for(self.keyspace, column_parent)
         colpred = self.service.slice_predicate(compar, slicerange)
         count = slicerange.count
+        if count == 0:
+            return []
         name = cols.pop(None)
         items = sorted(cols.iteritems(), cmp=compar, key=lambda i:i[0],
                        reverse=bool(slicerange.reversed))
