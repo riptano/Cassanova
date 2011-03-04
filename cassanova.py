@@ -32,6 +32,7 @@ from twisted.internet import defer
 from twisted.python import log
 from zope.interface import implements
 from cStringIO import StringIO
+from functools import partial
 import random
 import struct
 import hashlib
@@ -42,6 +43,8 @@ cluster_name = os.environ.get('CASSANOVA_CLUSTER_NAME', 'Fake Cluster')
 
 valid_ks_name_re = re.compile(r'^[a-z][a-z0-9_]*$', re.I)
 valid_cf_name_re = re.compile(r'^[a-z][a-z0-9_]*$', re.I)
+
+identity = lambda n:n
 
 class CassanovaInterface:
     implements(Cassandra.Iface)
@@ -64,7 +67,12 @@ class CassanovaInterface:
         except KeyError:
             # should get throw NFE when the cf doesn't even exist? or IRE still?
             raise NotFoundException
-        return make_ColumnOrSuperColumn(column_path, val)
+        if isinstance(val, dict):
+            sc = self.pack_up_supercolumn(self.keyspace, column_path, val)
+            val = ColumnOrSuperColumn(super_column=sc)
+        else:
+            val = ColumnOrSuperColumn(column=val)
+        return val
 
     def get_slice(self, key, column_parent, predicate, consistency_level):
         try:
@@ -72,7 +80,15 @@ class CassanovaInterface:
         except KeyError:
             return []
         filteredcols = self.filter_by_predicate(column_parent, cols, predicate)
-        return [make_ColumnOrSuperColumn(column_parent, f) for f in filteredcols]
+        if len(filteredcols) == 0:
+            return filteredcols
+        if isinstance(filteredcols[0], dict):
+            pack = partial(self.pack_up_supercolumn, self.keyspace, column_parent)
+            typ = 'super_column'
+        else:
+            pack = identity
+            typ = 'column'
+        return [ColumnOrSuperColumn(**{typ: pack(col)}) for col in filteredcols]
 
     def get_count(self, key, column_parent, predicate, consistency_level):
         return len(self.get_slice(key, column_parent, predicate, consistency_level))
@@ -441,6 +457,16 @@ class CassanovaInterface:
         else:
             return self.filter_by_slice_range(column_parent, cols, predicate.slice_range)
 
+    def pack_up_supercolumn(self, keyspace, column_parent, dat):
+        name = dat.pop(None)
+        cp = ColumnParent(column_family=column_parent.column_family,
+                          super_column=name)
+        compar = self.service.comparator_for(self.keyspace, cp)
+        cols = dat.values()
+        cols.sort(cmp=compar, key=lambda c:c.name)
+        dat[None] = name
+        return SuperColumn(name=name, columns=cols)
+
 class CassanovaServerProtocol(TTwisted.ThriftServerProtocol):
     def processError(self, error):
         # stoopid thrift doesn't log this stuff
@@ -769,14 +795,3 @@ class CassanovaService(service.MultiService):
             return self.key_predicate_tokens(comparator,
                                              keyrange.start_token, keyrange.end_token)
         raise InvalidRequestException(why="Improper KeyRange")
-
-def make_ColumnOrSuperColumn(column_parent, dat):
-    if isinstance(dat, dict):
-        name = dat.pop(None)
-        cosc = ColumnOrSuperColumn(
-            super_column=SuperColumn(name=name, columns=dat.values())
-        )
-        dat[None] = name
-    else:
-        cosc = ColumnOrSuperColumn(column=dat)
-    return cosc
