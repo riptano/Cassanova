@@ -399,7 +399,8 @@ class CassanovaInterface:
             if getattr(cfdef, attr, None) != getattr(oldcf, attr, None):
                 raise InvalidRequestException(why="can't change %s" % attr)
         for attr, val in cfdef.__dict__.iteritems():
-            setattr(oldcf, attr, val)
+            if attr != 'id':
+                setattr(oldcf, attr, val)
         return self.node.schema_code()
 
     def execute_cql_query(query, compression):
