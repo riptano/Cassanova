@@ -563,6 +563,12 @@ class SimpleStrategy(ReplicationStrategy):
 class OldNetworkTopologyStrategy(ReplicationStrategy):
     java_name = 'org.apache.cassandra.locator.OldNetworkTopologyStrategy'
 
+class NetworkTopologyStrategy(ReplicationStrategy):
+    java_name = 'org.apache.cassandra.locator.NetworkTopologyStrategy'
+
+class LocalStrategy(ReplicationStrategy):
+    java_name = 'org.apache.cassandra.locator.LocalStrategy'
+
 class Partitioner(JavaMimicClass):
     min_bound = ''
     key_cmp = staticmethod(cmp)
