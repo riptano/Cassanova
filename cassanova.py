@@ -389,7 +389,7 @@ class CassanovaInterface:
 
     def system_update_column_family(self, cfdef):
         try:
-            oldcf, _ = self.service.lookup_cf_and_data(self.keyspace, cfdef.name)
+            oldcf = self.service.lookup_cf(self.keyspace, cfdef.name)
         except KeyError:
             raise InvalidRequestException(why='no such columnfamily %s'
                                               % cfdef.name)
@@ -654,13 +654,17 @@ class CassanovaService(service.MultiService):
     def get_schema(self):
         return self.keyspaces.values()
 
-    def lookup_cf_and_data(self, ks, cfname):
+    def lookup_cf(self, ks, cfname):
         ksdef = self.get_keyspace(ks.name)
         for cfdef in ksdef.cf_defs:
             if cfdef.name == cfname:
                 break
         else:
             raise InvalidRequestException(why='No such column family %r' % cfname)
+        return cfdef
+
+    def lookup_cf_and_data(self, ks, cfname):
+        cfdef = self.lookup_cf(ks, cfname)
         datadict = self.data.setdefault(ks.name, {}).setdefault(cfname, {None: cfname})
         return cfdef, datadict
 
@@ -707,7 +711,7 @@ class CassanovaService(service.MultiService):
         return colparent[column_path.column]
 
     def comparator_for(self, ks, column_parent):
-        cf, _ = self.lookup_cf_and_data(ks, column_parent.column_family)
+        cf = self.lookup_cf(ks, column_parent.column_family)
         if column_parent.super_column is not None:
             return self.load_class_by_java_name(cf.subcomparator_type).comparator
         else:
