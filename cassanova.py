@@ -87,15 +87,11 @@ class CassanovaInterface:
         keys = sorted((k for k in dat.iterkeys() if k is not None), cmp=compar)
         out = []
         for k in keys:
-            print "checking key %r against predicate" % (k,)
             if keypred(k):
-                print "YES"
                 cols = self.get_slice(k, column_parent, predicate, consistency_level)
                 out.append(KeySlice(key=k, columns=cols))
                 if len(out) >= count:
                     break
-            else:
-                print "NO"
         return out
 
     def get_indexed_slices(self, column_parent, index_clause, column_predicate,
@@ -151,7 +147,6 @@ class CassanovaInterface:
             row = data[key]
         except KeyError:
             return
-        print "remove_key: old row %r" % (row,)
         if cf.column_type == 'Super':
             par = ColumnParent(column_family=cfname)
             for scname in list(row.keys()):
@@ -161,7 +156,6 @@ class CassanovaInterface:
                 self.remove_super_column(key, par, tstamp, consistency_level)
         else:
             row = self.remove_cols_from(row, tstamp)
-        print "remove_key: new row %r" % (row,)
         data[key] = row
 
     def remove(self, key, column_path, tstamp, consistency_level):
