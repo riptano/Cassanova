@@ -1,14 +1,25 @@
 #!/usr/bin/python
 #
-# MISSING FEATURES:
+# Storage layout:
 #
-#  - partitioners besides RP
-#  - batch_mutate
-#  - indexes
-#  - column validators
-#  - column resurrection
-#  - TTLs
-#  - performance (duh)
+# CassanovaService stores info about keyspaces and column family definitions on
+# the keyspaces attribute, separate from data.
+#
+# Actual data is stored in the data attribute, which is a dictionary mapping
+# keyspace names to what I'll call keyspace-dicts.
+#
+# keyspace-dicts map ColumnFamily names to cf-dicts.
+#
+# cf-dicts map keys to row-dicts. In addition, the special None key in each
+# cf-dict is mapped to its own ColumnFamily name.
+#
+# row-dicts map column names to Column objects, if in a standard ColumnFamily,
+# or supercolumn names to supercolumn-dicts otherwise. In addition, the special
+# None key in each row-dict is mapped to its own row key.
+#
+# supercolumn-dicts map column names to Column objects. In addition, the
+# special None key in each supercolumn-dict is mapped to its own supercolumn
+# name.
 
 from cassandra_thrift import Cassandra, constants
 from cassandra_thrift.ttypes import (KsDef, CfDef, InvalidRequestException, ColumnPath,
