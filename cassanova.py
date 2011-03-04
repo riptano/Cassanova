@@ -169,8 +169,62 @@ class CassanovaInterface:
                 return self.remove_key(column_path.column_family, key, tstamp,
                                        consistency_level)
 
+    def apply_mutate_delete(self, cf, row, deletion, consistency_level):
+        cp = ColumnPath(column_family=cf.name, super_column=deletion.super_column)
+        if deletion.predicate is None:
+            return self.remove(row[None], cp, deletion.timestamp, consistency_level)
+        if deletion.predicate.slice_range is not None:
+            raise InvalidRequestException('Not supposed to support batch_mutate '
+                                          'deletions with a slice_range (although '
+                                          'we would if this check was gone)')
+        if deletion.super_column is not None:
+            try:
+                row = row[deletion.super_column]
+            except KeyError:
+                return
+        killme = self.filter_by_predicate(cp, row, deletion.predicate)
+        for col in killme:
+            if isinstance(col, dict):
+                del row[col[None]]
+            else:
+                del row[col.name]
+
+    def apply_mutate_insert_super(self, row, sc, consistency_level):
+        scdat = {None: sc.name}
+        for col in sc.columns:
+            scdat[col.name] = col
+        row[sc.name] = scdat
+
+    def apply_mutate_insert_standard(self, row, col, consistency_level):
+        row[col.name] = col
+
+    def apply_mutate_insert(self, cf, row, cosc, consistency_level):
+        if cf.column_type == 'Super':
+            if cosc.super_column is None:
+                raise InvalidRequestException('inserting Column into SuperColumnFamily')
+            self.apply_mutate_insert_super(row, cosc.super_column, consistency_level)
+        else:
+            if cosc.super_column is not None:
+                raise InvalidRequestException('inserting SuperColumn into standard '
+                                              'ColumnFamily')
+            self.apply_mutate_insert_standard(row, cosc.column, consistency_level)
+
     def batch_mutate(self, mutation_map, consistency_level):
-        raise InvalidRequestException(why='batch_mutate unsupported here')
+        for key, col_mutate_map in mutation_map.iteritems():
+            for cfname, mutatelist in col_mutate_map.iteritems():
+                cf, dat = self.service.lookup_cf_and_row(self.keyspace, key, cfname,
+                                                         make=True)
+                for mutation in mutatelist:
+                    if mutation.column_or_supercolumn is not None \
+                    and mutation.deletion is not None:
+                        raise InvalidRequestException(why='Both deletion and insertion'
+                                                          ' in same mutation')
+                    if mutation.column_or_supercolumn is not None:
+                        self.apply_mutate_insert(cf, dat, mutation.column_or_supercolumn,
+                                                 consistency_level)
+                    else:
+                        self.apply_mutate_delete(cf, dat, mutation.deletion,
+                                                 consistency_level)
 
     def truncate(self, cfname):
         try:

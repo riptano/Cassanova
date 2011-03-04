@@ -10,20 +10,10 @@ __init__.pid_fname = os.path.join(__init__.root, 'system_test.pid')
 
 from test_thrift_server import TestMutations, TestTruncate
 
-for attr in list(TestMutations.__dict__):
-    if 'batch_mutate' in attr and attr.startswith('test_'):
-        delattr(TestMutations, attr)
-
 # this expects to see a TApplicationException from a bad insert call, but the
 # thrift definition doesn't say that we can throw one of those, so for now,
 # dying and closing the thrift conn is probably good enough
 del TestMutations.test_bad_calls
-
-# batch_mutate not supported
-del TestMutations.test_batch_insert
-del TestMutations.test_batch_insert_blocking
-del TestMutations.test_batch_insert_super
-del TestMutations.test_batch_insert_super_blocking
 
 # COPP not supported
 del TestMutations.test_wrapped_range_slices
