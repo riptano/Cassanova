@@ -286,7 +286,7 @@ class CassanovaInterface:
         trmap = self.service.get_range_to_endpoint_map()
         return [TokenRange(start_token=lo,
                            end_token=hi,
-                           endpoints=[c.addr.host for c in endpoints])
+                           endpoints=[c.endpoint_str() for c in endpoints])
                 for ((lo, hi), endpoints) in trmap.items()]
 
     def describe_partitioner(self):
@@ -547,6 +547,9 @@ class CassanovaNode(internet.TCPServer):
         internet.TCPServer.startService(self)
         self.addr = self._port.getHost()
 
+    def endpoint_str(self):
+        return self.addr.host
+
     def get_schema(self):
         # in case tests want to override this functionality
         return self.parent.get_schema()
@@ -686,9 +689,9 @@ class CassanovaService(service.MultiService):
     def get_range_to_endpoint_map(self):
         ring = sorted(self.ring.items())
         trmap = {}
-        for num, r in enumerate(ring):
-            endpoints = (ring[num-1][0], ring[num][0])
-            trmap[tuple(map(self.partitioner.token_as_bytes, endpoints))] = [r[1]]
+        for num, (tok, node) in enumerate(ring):
+            endpoints = (ring[num-1][0], tok)
+            trmap[tuple(map(self.partitioner.token_as_bytes, endpoints))] = [node]
         return trmap
 
     def get_schema(self):
