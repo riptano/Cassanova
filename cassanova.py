@@ -64,8 +64,9 @@ class CassanovaInterface:
     def get(self, key, column_path, consistency_level):
         try:
             val = self.service.lookup_column_path(self.keyspace, key, column_path)
-        except KeyError:
+        except KeyError, e:
             # should get throw NFE when the cf doesn't even exist? or IRE still?
+            log.msg('Could not find %r (keyspace %r)' % (e.args[0], self.keyspace.name))
             raise NotFoundException
         if isinstance(val, dict):
             sc = self.pack_up_supercolumn(self.keyspace, column_path, val)
@@ -470,7 +471,7 @@ class CassanovaInterface:
 class CassanovaServerProtocol(TTwisted.ThriftServerProtocol):
     def processError(self, error):
         # stoopid thrift doesn't log this stuff
-        log.err(error)
+        log.err(error, 'Error causing connection reset')
         TTwisted.ThriftServerProtocol.processError(self, error)
 
 class FactoryProxy:
@@ -567,6 +568,13 @@ class CassanovaNode(internet.TCPServer):
         for k in klist:
             k.write(TBinaryProtocol.TBinaryProtocol(buf))
         return buf.getvalue()
+
+    def __hash__(self):
+        return hash((self.__class__, self.addr, self.mytoken))
+
+    def __str__(self):
+        return '<%s at %s:%d>' % (self.__class__.__name__, self.addr.host, self.addr.port)
+    __repr__ = __str__
 
 java_class_map = {}
 class register_java_class(type):
