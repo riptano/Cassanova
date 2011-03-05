@@ -26,7 +26,7 @@ from cassandra_thrift.ttypes import (KsDef, CfDef, InvalidRequestException, Colu
                                      NotFoundException, TokenRange, ColumnOrSuperColumn,
                                      SuperColumn, KeySlice, ColumnParent)
 from thrift.protocol import TBinaryProtocol
-from thrift.transport import TTwisted
+from thrift.transport import TTwisted, TTransport
 from twisted.application import internet, service
 from twisted.internet import defer
 from twisted.python import log
@@ -474,45 +474,55 @@ class CassanovaServerProtocol(TTwisted.ThriftServerProtocol):
         log.err(error, 'Error causing connection reset')
         TTwisted.ThriftServerProtocol.processError(self, error)
 
-class FactoryProxy:
-    def __init__(self, realfactory, processormaker):
-        self.realfactory = realfactory
-        self.processor = processormaker()
+    def stringReceived(self, frame):
+        tmi = TTransport.TMemoryBuffer(frame)
+        tmo = TTransport.TMemoryBuffer()
 
-    def __getattr__(self, name):
-        return getattr(self.realfactory, name)
+        iprot = self.factory.iprot_factory.getProtocol(tmi)
+        oprot = self.factory.oprot_factory.getProtocol(tmo)
 
-class LogCallWrapper:
-    implements(Cassandra.Iface)
+        self.working = True
+        d = self.processor.process(iprot, oprot)
+        d.addBoth(self.done_working)
+        d.addCallbacks(self.processOk, self.processError,
+                       callbackArgs=(tmo,))
 
-    def __init__(self, food, wrapnames):
-        self.food = food
-        self.wrapnames = set(wrapnames)
+    def done_working(self, x):
+        self.working = False
+        return x
 
-    def __getattr__(self, name):
-        val = getattr(self.food, name)
-        if name in self.wrapnames:
-            def wrapper(*a, **kw):
-                args = map(repr, a)
-                args += ['%s=%r' % (k, v) for (k, v) in kw.iteritems()]
-                log.msg('%s(%s)' % (name, ', '.join(args)))
-                d = defer.maybeDeferred(val, *a, **kw)
-                d.addCallback(lambda ans: [log.msg('=> %r' % ans), ans][1])
-                d.addErrback(lambda err: [log.err(err, 'Returning error'), err][1])
-                return d
-            wrapper.func_name = 'wrapper_for_%s' % name
-            setattr(self, name, wrapper)
-            return wrapper
-        return name
+    def connectionMade(self):
+        self.working = False
+        self.factory.node.conns_to_me.add(self)
+        return TTwisted.ThriftServerProtocol.connectionMade(self)
+
+    def connectionLost(self, reason):
+        del self.processor
+        self.factory.node.conns_to_me.discard(self)
+        return TTwisted.ThriftServerProtocol.connectionLost(self, reason)
 
 class CassanovaProcessor(Cassandra.Processor):
     def __init__(self, handler):
-        wraphandler = LogCallWrapper(handler, ())
-        Cassandra.Processor.__init__(self, wraphandler)
-        wraphandler.wrapnames.update(self._processMap)
+        Cassandra.Processor.__init__(self, handler)
+        for funcname in self._processMap.keys():
+            setattr(handler, funcname, self.logwrap(getattr(handler, funcname)))
+
+    def logwrap(self, method):
+        def wrapper(*a, **kw):
+            args = map(repr, a)
+            args += ['%s=%r' % (k, v) for (k, v) in kw.iteritems()]
+            log.msg('%s(%s)' % (name, ', '.join(args)))
+            d = defer.maybeDeferred(method, *a, **kw)
+            d.addCallback(lambda ans: [log.msg('=> %r' % ans), ans][1])
+            d.addErrback(lambda err: [log.err(err, 'Returning error'), err][1])
+            return d
+        wrapper.func_name = 'wrapper_for_%s' % name
+        return wrapper
 
 class CassanovaFactory(TTwisted.ThriftServerFactory):
     protocol = CassanovaServerProtocol
+    processor_factory = Cassandra.Processor
+    handler_factory = CassanovaInterface
 
     def __init__(self, node):
         self.node = node
@@ -527,11 +537,9 @@ class CassanovaFactory(TTwisted.ThriftServerFactory):
         """
 
         p = self.protocol()
-        p.factory = FactoryProxy(self, self.make_processor)
+        p.factory = self
+        p.processor = self.processor_factory(self.handler_factory(self.node))
         return p
-
-    def make_processor(self):
-        return CassanovaProcessor(CassanovaInterface(self.node))
 
 class CassanovaNode(internet.TCPServer):
     factory = CassanovaFactory
@@ -539,6 +547,7 @@ class CassanovaNode(internet.TCPServer):
     def __init__(self, port, interface, token=None):
         internet.TCPServer.__init__(self, port, self.factory(self),
                                     interface=interface)
+        self.conns_to_me = set()
         if token is None:
             token = random.getrandbits(127)
         self.mytoken = token
@@ -546,6 +555,11 @@ class CassanovaNode(internet.TCPServer):
     def startService(self):
         internet.TCPServer.startService(self)
         self.addr = self._port.getHost()
+
+    def stopService(self):
+        internet.TCPServer.stopService(self)
+        for p in self.conns_to_me:
+            p.transport.loseConnection()
 
     def endpoint_str(self):
         return self.addr.host
