@@ -820,3 +820,24 @@ class CassanovaService(service.MultiService):
             return self.key_predicate_tokens(comparator,
                                              keyrange.start_token, keyrange.end_token)
         raise InvalidRequestException(why="Improper KeyRange")
+
+    def get_connections(self):
+        """
+        Get a list of (CassanovaNode, CassanovaServerProtocol) tuples
+        corresponding to all current incoming connections. This can be useful
+        in testing client's handling of connection failures; call
+        proto.transport.loseConnection() to force a loss.
+        """
+
+        conns = []
+        nodes = sorted(self.ring.itervalues())
+        for n in nodes:
+            conns.extend((n, proto) for proto in n.conns_to_me)
+        return conns
+
+    def get_working_connections(self):
+        workers = []
+        for node, proto in self.get_connections():
+            if proto.working:
+                workers.append((node, proto))
+        return workers
