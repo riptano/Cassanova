@@ -501,6 +501,10 @@ class CassanovaServerProtocol(TTwisted.ThriftServerProtocol):
         self.factory.node.conns_to_me.discard(self)
         return TTwisted.ThriftServerProtocol.connectionLost(self, reason)
 
+    def __str__(self):
+        return '<%s at 0x%x (working=%s)>' % (self.__class__.__name__, id(self), self.working)
+    __repr__ = __str__
+
 class CassanovaProcessor(Cassandra.Processor):
     def __init__(self, handler):
         Cassandra.Processor.__init__(self, handler)
@@ -821,6 +825,9 @@ class CassanovaService(service.MultiService):
                                              keyrange.start_token, keyrange.end_token)
         raise InvalidRequestException(why="Improper KeyRange")
 
+    def get_nodes(self):
+        return self.ring.values()
+
     def get_connections(self):
         """
         Get a list of (CassanovaNode, CassanovaServerProtocol) tuples
@@ -830,7 +837,7 @@ class CassanovaService(service.MultiService):
         """
 
         conns = []
-        nodes = sorted(self.ring.itervalues())
+        nodes = sorted(self.get_nodes())
         for n in nodes:
             conns.extend((n, proto) for proto in n.conns_to_me)
         return conns
