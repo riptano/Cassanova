@@ -323,7 +323,10 @@ class CassanovaInterface:
         if cfdef.subcomparator_type is None:
             cfdef.subcomparator_type = 'BytesType'
         try:
-            parsed_comparator = cfdef.comparator_type[:cfdef.comparator_type.find('(')]
+            if "(" in cfdef.comparator_type:
+                parsed_comparator = cfdef.comparator_type[:cfdef.comparator_type.find('(')]
+            else:
+                parsed_comparator = cfdef.comparator_type
             vtype = self.service.load_class_by_java_name(parsed_comparator)
             vtype.comparator
             cfdef.comparator_type = vtype.java_name
