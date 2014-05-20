@@ -323,7 +323,8 @@ class CassanovaInterface:
         if cfdef.subcomparator_type is None:
             cfdef.subcomparator_type = 'BytesType'
         try:
-            vtype = self.service.load_class_by_java_name(cfdef.comparator_type)
+            parsed_comparator = cfdef.comparator_type[:cfdef.comparator_type.find('(')]
+            vtype = self.service.load_class_by_java_name(parsed_comparator)
             vtype.comparator
             cfdef.comparator_type = vtype.java_name
             if cfdef.column_type == 'Super':
@@ -650,6 +651,14 @@ class AbstractType(JavaMimicClass):
     @classmethod
     def comparator(cls, a, b):
         return cmp(cls.input(a), cls.input(b))
+
+class ReversedType(AbstractType):
+    java_name = 'org.apache.cassandra.db.marshal.ReversedType'
+
+    @classmethod
+    def comparator(cls, a, b):
+        result = super(ReversedType, cls).comparator(a, b)
+        return result * -1
 
 class BytesType(AbstractType):
     java_name = 'org.apache.cassandra.db.marshal.BytesType'
