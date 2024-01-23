@@ -1,3 +1,11 @@
+---------------------------------------------------
+Archived code provided for historical interest only
+---------------------------------------------------
+
+This implements an obsolete Cassandra protocol in an obsolete version of Python.  Do not use!
+
+----
+
 ---------
 Cassanova
 ---------
